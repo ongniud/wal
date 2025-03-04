@@ -24,10 +24,10 @@ import (
 func main() {
     // Open WAL
     w, err := wal.Open(wal.Options{
-		Directory:    "/path/to/logs",
-		SegmentSize:  1 * wal.GB,
-		SyncInterval: 1 * time.Second,
-	})
+        Directory:    "/path/to/logs",
+        SegmentSize:  1 * wal.GB,
+        SyncInterval: 1 * time.Second,
+    })
     if err != nil {
         log.Fatal(err)
     }

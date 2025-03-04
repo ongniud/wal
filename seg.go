@@ -51,6 +51,7 @@ type Segment struct {
 	fd           *os.File
 	closed       bool
 	currentBlock *block
+	cachedBlock  *block // 缓存最近读取的块
 }
 
 // block represents a block structure
@@ -97,6 +98,9 @@ func NewSegment(id int, path string) (*Segment, error) {
 		currentBlock: &block{
 			id:   blockCount,
 			data: blockData,
+		},
+		cachedBlock: &block{
+			data: make([]byte, blockSize),
 		},
 	}
 	return seg, nil
@@ -257,35 +261,34 @@ func (s *Segment) Read(pos *Position) ([]byte, error) {
 	}
 
 	for {
-		// TODO: alloc a lot
 		blockData, err := s.readBlock(currentPos.BlockId)
 		if err != nil {
 			return nil, err
 		}
 
 		if currentPos.ChunkOffset >= int64(len(blockData)) {
-			return nil, fmt.Errorf("chunk offset %d is out of range for block %d", currentPos.ChunkOffset, currentPos.BlockId)
+			return nil, fmt.Errorf("chk offset %d is out of range for block %d", currentPos.ChunkOffset, currentPos.BlockId)
 		}
 
-		chunk, err := s.readChunk(blockData[currentPos.ChunkOffset:])
+		chk, err := s.readChunk(blockData[currentPos.ChunkOffset:])
 		if err != nil {
 			return nil, err
 		}
 
 		if len(entry) == 0 {
-			if chunk.chunkType != kFullType && chunk.chunkType != kFirstType {
-				return nil, fmt.Errorf("invalid first chunk type: %v", chunk.chunkType)
+			if chk.chunkType != kFullType && chk.chunkType != kFirstType {
+				return nil, fmt.Errorf("invalid first chk type: %v", chk.chunkType)
 			}
-		} else if chunk.chunkType != kMiddleType && chunk.chunkType != kLastType {
-			return nil, fmt.Errorf("invalid chunk type: %v", chunk.chunkType)
+		} else if chk.chunkType != kMiddleType && chk.chunkType != kLastType {
+			return nil, fmt.Errorf("invalid chk type: %v", chk.chunkType)
 		}
 
-		entry = append(entry, chunk.data...)
+		entry = append(entry, chk.data...)
 
-		if chunk.chunkType == kLastType || chunk.chunkType == kFullType {
+		if chk.chunkType == kLastType || chk.chunkType == kFullType {
 			return entry, nil
 		}
-		currentPos.ChunkOffset += int64(chunkHeaderSize + len(chunk.data))
+		currentPos.ChunkOffset += int64(chunkHeaderSize + len(chk.data))
 		if currentPos.ChunkOffset >= int64(len(blockData)) {
 			currentPos.BlockId++
 			currentPos.ChunkOffset = 0
@@ -299,17 +302,23 @@ func (s *Segment) readBlock(blockID int) ([]byte, error) {
 		return nil, ErrClosed
 	}
 
+	if s.cachedBlock != nil && s.cachedBlock.id == blockID {
+		return s.cachedBlock.data, nil
+	}
+
 	blockOffset := int64(blockID) * blockSize
 	if _, err := s.fd.Seek(blockOffset, io.SeekStart); err != nil {
 		return nil, err
 	}
 
-	blockData := make([]byte, blockSize)
-	n, err := io.ReadFull(s.fd, blockData)
+	s.cachedBlock.id = blockID
+	s.cachedBlock.data = s.cachedBlock.data[0:blockSize]
+	n, err := io.ReadFull(s.fd, s.cachedBlock.data)
 	if err != nil && err != io.ErrUnexpectedEOF {
 		return nil, err
 	}
-	return blockData[0:n], nil
+
+	return s.cachedBlock.data[0:n], nil
 }
 
 // Sync synchronizes the data to disk

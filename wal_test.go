@@ -12,18 +12,14 @@ import (
 )
 
 func TestWAL(t *testing.T) {
-	dir := "test_wal"
 	opts := Options{
+		Directory:    t.TempDir(),
 		SegmentSize:  1024, // 1 KB
 		SyncInterval: 1 * time.Second,
 	}
 
-	// Clean up any previous test data
-	os.RemoveAll(dir)
-	defer os.RemoveAll(dir)
-
 	// Test Open and Initialize
-	wal, err := Open(dir, opts)
+	wal, err := Open(opts)
 	if err != nil {
 		t.Fatalf("Failed to open WAL: %v", err)
 	}
@@ -35,6 +31,8 @@ func TestWAL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to write to WAL: %v", err)
 	}
+
+	time.Sleep(time.Second * 3)
 
 	// Test Read
 	readData, err := wal.Read(pos)
@@ -69,7 +67,7 @@ func TestWAL(t *testing.T) {
 	}
 
 	// Reopen WAL to ensure data persistence
-	wal, err = Open(dir, opts)
+	wal, err = Open(opts)
 	if err != nil {
 		t.Fatalf("Failed to reopen WAL: %v", err)
 	}
@@ -88,6 +86,7 @@ func TestWAL(t *testing.T) {
 func TestWAL_ConcurrentWrite(t *testing.T) {
 	dir := "test_wal_concurrent"
 	opts := Options{
+		Directory:    dir,
 		SegmentSize:  1024, // 1 KB
 		SyncInterval: 1 * time.Second,
 	}
@@ -96,7 +95,7 @@ func TestWAL_ConcurrentWrite(t *testing.T) {
 	os.RemoveAll(dir)
 	//defer os.RemoveAll(dir)
 
-	wal, err := Open(dir, opts)
+	wal, err := Open(opts)
 	if err != nil {
 		t.Fatalf("Failed to open WAL: %v", err)
 	}
@@ -141,10 +140,11 @@ func TestWAL_ConcurrentWrite(t *testing.T) {
 func TestWAL_BasicOperations(t *testing.T) {
 	dir := t.TempDir()
 	opts := Options{
+		Directory:    dir,
 		SegmentSize:  1024,
 		SyncInterval: 10 * time.Millisecond,
 	}
-	wal, err := Open(dir, opts)
+	wal, err := Open(opts)
 	assert.NoError(t, err)
 	defer wal.Close()
 
@@ -163,10 +163,11 @@ func TestWAL_BasicOperations(t *testing.T) {
 func TestWAL_SegmentRotation(t *testing.T) {
 	dir := t.TempDir()
 	opts := Options{
+		Directory:    dir,
 		SegmentSize:  20,
 		SyncInterval: 10 * time.Millisecond,
 	}
-	wal, err := Open(dir, opts)
+	wal, err := Open(opts)
 	assert.NoError(t, err)
 	defer wal.Close()
 
@@ -182,12 +183,12 @@ func TestWAL_SegmentRotation(t *testing.T) {
 }
 
 func TestWAL_ConcurrentWrites(t *testing.T) {
-	dir := t.TempDir()
 	opts := Options{
+		Directory:    t.TempDir(),
 		SegmentSize:  1024,
 		SyncInterval: 10 * time.Millisecond,
 	}
-	wal, err := Open(dir, opts)
+	wal, err := Open(opts)
 	assert.NoError(t, err)
 	defer wal.Close()
 
@@ -206,12 +207,12 @@ func TestWAL_ConcurrentWrites(t *testing.T) {
 }
 
 func TestWAL_Sync(t *testing.T) {
-	dir := t.TempDir()
 	opts := Options{
+		Directory:    t.TempDir(),
 		SegmentSize:  1024,
 		SyncInterval: 10 * time.Millisecond,
 	}
-	wal, err := Open(dir, opts)
+	wal, err := Open(opts)
 	assert.NoError(t, err)
 	defer wal.Close()
 
@@ -219,12 +220,12 @@ func TestWAL_Sync(t *testing.T) {
 }
 
 func TestWAL_Close(t *testing.T) {
-	dir := t.TempDir()
 	opts := Options{
+		Directory:    t.TempDir(),
 		SegmentSize:  1024,
 		SyncInterval: 10 * time.Millisecond,
 	}
-	wal, err := Open(dir, opts)
+	wal, err := Open(opts)
 	assert.NoError(t, err)
 	assert.NoError(t, wal.Close())
 	assert.Error(t, wal.Sync())

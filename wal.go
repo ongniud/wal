@@ -11,7 +11,6 @@ import (
 )
 
 type WAL struct {
-	dir        string
 	opts       Options
 	segment    *Segment
 	segments   map[int]*Segment
@@ -21,13 +20,13 @@ type WAL struct {
 }
 
 type Options struct {
+	Directory    string
 	SegmentSize  int64
 	SyncInterval time.Duration
 }
 
-func Open(dir string, opts Options) (*WAL, error) {
+func Open(opts Options) (*WAL, error) {
 	w := &WAL{
-		dir:        dir,
 		opts:       opts,
 		segments:   make(map[int]*Segment),
 		closeC:     make(chan struct{}),
@@ -41,11 +40,11 @@ func Open(dir string, opts Options) (*WAL, error) {
 }
 
 func (w *WAL) initialize() error {
-	if err := os.MkdirAll(w.dir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(w.opts.Directory, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	entries, err := os.ReadDir(w.dir)
+	entries, err := os.ReadDir(w.opts.Directory)
 	if err != nil {
 		return err
 	}
@@ -65,7 +64,7 @@ func (w *WAL) initialize() error {
 
 	if len(segmentIDs) == 0 {
 		segId := 0
-		file := filepath.Join(w.dir, fmt.Sprintf("seg_%d.log", segId))
+		file := filepath.Join(w.opts.Directory, fmt.Sprintf("seg_%d.log", segId))
 		seg, err := NewSegment(segId, file)
 		if err != nil {
 			return err
@@ -74,7 +73,7 @@ func (w *WAL) initialize() error {
 		w.segments[segId] = seg
 	} else {
 		for _, segId := range segmentIDs {
-			file := filepath.Join(w.dir, fmt.Sprintf("seg_%d.log", segId))
+			file := filepath.Join(w.opts.Directory, fmt.Sprintf("seg_%d.log", segId))
 			seg, err := NewSegment(segId, file)
 			if err != nil {
 				return err
@@ -115,7 +114,7 @@ func (w *WAL) Write(data []byte) (*Position, error) {
 func (w *WAL) rotate() error {
 	oldSeg := w.segment
 	segId := oldSeg.Id() + 1
-	file := filepath.Join(w.dir, fmt.Sprintf("seg_%d.log", segId))
+	file := filepath.Join(w.opts.Directory, fmt.Sprintf("seg_%d.log", segId))
 	seg, err := NewSegment(segId, file)
 	if err != nil {
 		return err

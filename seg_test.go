@@ -127,7 +127,7 @@ func TestSegment_CRCValidation(t *testing.T) {
 	}
 	defer fd.Close()
 
-	tamperOffset := int64(pos.BlockId)*blockSize + pos.ChunkOffset + 4 // 跳过 CRC 字段
+	tamperOffset := int64(pos.BlockId)*blockSize + pos.Offset + 4 // 跳过 CRC 字段
 	if _, err := fd.WriteAt([]byte{0xFF}, tamperOffset); err != nil {
 		t.Fatalf("Failed to tamper with file: %v", err)
 	}

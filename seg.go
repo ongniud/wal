@@ -63,8 +63,7 @@ type block struct {
 
 // NewSegment creates a new Segment
 func NewSegment(id int, path string) (*Segment, error) {
-	// os.O_TRUNC
-	fd, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	fd, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644) // os.O_TRUNC
 	if err != nil {
 		return nil, err
 	}
@@ -144,8 +143,6 @@ func (s *Segment) Write(data []byte) (*Position, error) {
 			pos = position
 		}
 	}
-
-	//log.Printf("Data written successfully. Position: SegmentId=%d, BlockId=%d, ChunkOffset=%d, dataSize=%d, ChunkCount=%d\n", pos.SegmentId, pos.BlockId, pos.ChunkOffset, len(data), len(chunks))
 	return pos, nil
 }
 
@@ -213,17 +210,14 @@ func (s *Segment) splitIntoChunks(data []byte) []chunk {
 		if chunkSize > remaining {
 			chunkSize = remaining
 		}
-
 		chunkType := kFirstType
 		if remaining == len(data) && chunkSize == len(data) {
 			chunkType = kFullType
 		}
-
 		chunks = append(chunks, chunk{
 			data:      data[offset : offset+chunkSize],
 			chunkType: chunkType,
 		})
-
 		offset += chunkSize
 		remaining -= chunkSize
 	}
@@ -233,7 +227,6 @@ func (s *Segment) splitIntoChunks(data []byte) []chunk {
 		if chunkSize > remaining {
 			chunkSize = remaining
 		}
-
 		var chunkType ChunkType
 		if remaining == len(data) && chunkSize == len(data) {
 			chunkType = kFullType
@@ -244,12 +237,10 @@ func (s *Segment) splitIntoChunks(data []byte) []chunk {
 		} else {
 			chunkType = kMiddleType
 		}
-
 		chunks = append(chunks, chunk{
 			data:      data[offset : offset+chunkSize],
 			chunkType: chunkType,
 		})
-
 		offset += chunkSize
 		remaining -= chunkSize
 	}
@@ -289,11 +280,9 @@ func (s *Segment) Read(pos *Position) ([]byte, error) {
 		}
 
 		entry = append(entry, chk.data...)
-
 		if chk.chunkType == kLastType || chk.chunkType == kFullType {
 			return entry, nil
 		}
-
 		currentPos.ChunkOffset += int64(chunkHeaderSize + len(chk.data))
 		if currentPos.ChunkOffset >= int64(len(blockData)) {
 			currentPos.BlockId++

@@ -11,12 +11,12 @@ import (
 )
 
 type WAL struct {
-	opts       Options
-	segment    *Segment
-	segments   map[int]*Segment
-	closeC     chan struct{}
-	syncTicker *time.Ticker
-	mu         sync.Mutex
+	opts     Options
+	segment  *Segment
+	segments map[int]*Segment
+	closeC   chan struct{}
+	ticker   *time.Ticker
+	mu       sync.Mutex
 }
 
 type Options struct {
@@ -27,10 +27,10 @@ type Options struct {
 
 func Open(opts Options) (*WAL, error) {
 	w := &WAL{
-		opts:       opts,
-		segments:   make(map[int]*Segment),
-		closeC:     make(chan struct{}),
-		syncTicker: time.NewTicker(opts.SyncInterval),
+		opts:     opts,
+		segments: make(map[int]*Segment),
+		closeC:   make(chan struct{}),
+		ticker:   time.NewTicker(opts.SyncInterval),
 	}
 	if err := w.initialize(); err != nil {
 		return nil, err
@@ -49,21 +49,19 @@ func (w *WAL) initialize() error {
 		return err
 	}
 
-	var segmentIDs []int
+	var segIds []int
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 		var id int
 		if _, err := fmt.Sscanf(entry.Name(), "seg_%d.log", &id); err == nil {
-			segmentIDs = append(segmentIDs, id)
+			segIds = append(segIds, id)
 		}
 	}
 
-	sort.Ints(segmentIDs)
-	fmt.Println(segmentIDs)
-
-	if len(segmentIDs) == 0 {
+	sort.Ints(segIds)
+	if len(segIds) == 0 {
 		segId := 0
 		file := filepath.Join(w.opts.Directory, fmt.Sprintf("seg_%d.log", segId))
 		seg, err := NewSegment(segId, file)
@@ -73,7 +71,7 @@ func (w *WAL) initialize() error {
 		w.segment = seg
 		w.segments[segId] = seg
 	} else {
-		for _, segId := range segmentIDs {
+		for _, segId := range segIds {
 			file := filepath.Join(w.opts.Directory, fmt.Sprintf("seg_%d.log", segId))
 			seg, err := NewSegment(segId, file)
 			if err != nil {
@@ -81,7 +79,7 @@ func (w *WAL) initialize() error {
 			}
 			w.segments[segId] = seg
 		}
-		w.segment = w.segments[segmentIDs[len(segmentIDs)-1]]
+		w.segment = w.segments[segIds[len(segIds)-1]]
 	}
 
 	return nil
@@ -138,7 +136,7 @@ func (w *WAL) Close() error {
 		close(w.closeC)
 	}
 
-	w.syncTicker.Stop()
+	w.ticker.Stop()
 
 	var errs []error
 	for _, segment := range w.segments {
@@ -162,7 +160,7 @@ func (w *WAL) Sync() error {
 func (w *WAL) periodicSync() {
 	for {
 		select {
-		case <-w.syncTicker.C:
+		case <-w.ticker.C:
 			w.mu.Lock()
 			if err := w.segment.Sync(); err != nil {
 				fmt.Println("sync error:", err)

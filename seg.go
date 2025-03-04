@@ -15,6 +15,13 @@ var (
 	bp = sp.NewSlicePoolDefault[byte]()
 )
 
+const (
+	B  = 1
+	KB = 1024 * B
+	MB = 1024 * KB
+	GB = 1024 * MB
+)
+
 // Block size, currently set to 128 bytes (originally 32KB)
 const (
 	blockSize       = 32 * KB
@@ -40,9 +47,9 @@ var (
 
 // Position records the position of a chunk
 type Position struct {
-	SegmentId   int   // Segment file ID
-	BlockId     int   // Block ID
-	ChunkOffset int64 // Chunk offset
+	SegmentId int   // Segment file ID
+	BlockId   int   // Block ID
+	Offset    int64 // Chunk offset
 }
 
 // Segment represents the Write-Ahead Log segment
@@ -152,14 +159,14 @@ func (s *Segment) writeChunk(data []byte, chunkType ChunkType) (*Position, error
 	binary.LittleEndian.PutUint32(header[:4], crc32.ChecksumIEEE(data))
 	binary.LittleEndian.PutUint16(header[4:6], uint16(len(data)))
 	header[6] = byte(chunkType)
-	chunkOffset := int64(len(s.currentBlock.data))
+	offset := int64(len(s.currentBlock.data))
 	s.currentBlock.data = append(s.currentBlock.data, header...)
 	s.currentBlock.data = append(s.currentBlock.data, data...)
 	bp.Free(header)
 	return &Position{
-		SegmentId:   s.id,
-		BlockId:     s.currentBlock.id,
-		ChunkOffset: chunkOffset,
+		SegmentId: s.id,
+		BlockId:   s.currentBlock.id,
+		Offset:    offset,
 	}, nil
 }
 
@@ -251,9 +258,9 @@ func (s *Segment) splitIntoChunks(data []byte) []chunk {
 func (s *Segment) Read(pos *Position) ([]byte, error) {
 	var entry []byte
 	currentPos := &Position{
-		SegmentId:   pos.SegmentId,
-		BlockId:     pos.BlockId,
-		ChunkOffset: pos.ChunkOffset,
+		SegmentId: pos.SegmentId,
+		BlockId:   pos.BlockId,
+		Offset:    pos.Offset,
 	}
 
 	for {
@@ -262,11 +269,11 @@ func (s *Segment) Read(pos *Position) ([]byte, error) {
 			return nil, err
 		}
 
-		if currentPos.ChunkOffset >= int64(len(blockData)) {
-			return nil, fmt.Errorf("chk offset %d is out of range for block %d", currentPos.ChunkOffset, currentPos.BlockId)
+		if currentPos.Offset >= int64(len(blockData)) {
+			return nil, fmt.Errorf("chk offset %d is out of range for block %d", currentPos.Offset, currentPos.BlockId)
 		}
 
-		chk, err := s.readChunk(blockData[currentPos.ChunkOffset:])
+		chk, err := s.readChunk(blockData[currentPos.Offset:])
 		if err != nil {
 			return nil, err
 		}
@@ -283,10 +290,10 @@ func (s *Segment) Read(pos *Position) ([]byte, error) {
 		if chk.chunkType == kLastType || chk.chunkType == kFullType {
 			return entry, nil
 		}
-		currentPos.ChunkOffset += int64(chunkHeaderSize + len(chk.data))
-		if currentPos.ChunkOffset >= int64(len(blockData)) {
+		currentPos.Offset += int64(chunkHeaderSize + len(chk.data))
+		if currentPos.Offset >= int64(len(blockData)) {
 			currentPos.BlockId++
-			currentPos.ChunkOffset = 0
+			currentPos.Offset = 0
 		}
 	}
 }

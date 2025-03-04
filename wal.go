@@ -61,6 +61,7 @@ func (w *WAL) initialize() error {
 	}
 
 	sort.Ints(segmentIDs)
+	fmt.Println(segmentIDs)
 
 	if len(segmentIDs) == 0 {
 		segId := 0
@@ -112,8 +113,10 @@ func (w *WAL) Write(data []byte) (*Position, error) {
 }
 
 func (w *WAL) rotate() error {
-	oldSeg := w.segment
-	segId := oldSeg.Id() + 1
+	if err := w.segment.Sync(); err != nil {
+		return err
+	}
+	segId := w.segment.Id() + 1
 	file := filepath.Join(w.opts.Directory, fmt.Sprintf("seg_%d.log", segId))
 	seg, err := NewSegment(segId, file)
 	if err != nil {

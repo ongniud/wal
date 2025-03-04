@@ -80,7 +80,6 @@ func NewSegment(id int, path string) (*Segment, error) {
 	blockOccupy := offset % blockSize
 	blockData := make([]byte, 0, blockSize)
 	if blockOccupy != 0 {
-		fmt.Printf("WARNING !")
 		if _, err := fd.Seek(offset-blockOccupy, io.SeekStart); err != nil {
 			return nil, err
 		}
@@ -100,6 +99,7 @@ func NewSegment(id int, path string) (*Segment, error) {
 			data: blockData,
 		},
 		cachedBlock: &block{
+			id:   -1,
 			data: make([]byte, blockSize),
 		},
 	}
@@ -108,7 +108,13 @@ func NewSegment(id int, path string) (*Segment, error) {
 
 // Size returns the total disk space occupied by the current Segment
 func (s *Segment) Size() int64 {
-	return int64((s.currentBlock.id + 1) * blockSize)
+	if s.currentBlock.flushed == 0 {
+		return int64(s.currentBlock.id * blockSize)
+	}
+	if s.currentBlock.id <= 0 {
+		return int64(s.currentBlock.flushed)
+	}
+	return int64((s.currentBlock.id-1)*blockSize + s.currentBlock.flushed)
 }
 
 // Id returns the ID of the Segment
@@ -139,7 +145,7 @@ func (s *Segment) Write(data []byte) (*Position, error) {
 		}
 	}
 
-	//log.Printf("Data written successfully. Position: SegmentId=%d, BlockId=%d, ChunkOffset=%d\n", pos.SegmentId, pos.BlockId, pos.ChunkOffset)
+	//log.Printf("Data written successfully. Position: SegmentId=%d, BlockId=%d, ChunkOffset=%d, dataSize=%d, ChunkCount=%d\n", pos.SegmentId, pos.BlockId, pos.ChunkOffset, len(data), len(chunks))
 	return pos, nil
 }
 
@@ -162,26 +168,25 @@ func (s *Segment) writeChunk(data []byte, chunkType ChunkType) (*Position, error
 
 // flushBlock flushes the block to disk
 func (s *Segment) flushBlock(padding bool) error {
-	dataToWrite := s.currentBlock.data[s.currentBlock.flushed:]
-	if len(dataToWrite) == 0 && !padding {
+	data := s.currentBlock.data[s.currentBlock.flushed:]
+	if len(data) == 0 && !padding {
 		return nil
 	}
 
 	if padding && len(s.currentBlock.data) < blockSize {
 		paddingSize := blockSize - len(s.currentBlock.data)
-		padding := bp.Alloc(paddingSize)
+		padding := bp.Alloc(paddingSize)[0:paddingSize]
 		s.currentBlock.data = append(s.currentBlock.data, padding...)
-		dataToWrite = s.currentBlock.data[s.currentBlock.flushed:]
+		data = s.currentBlock.data[s.currentBlock.flushed:]
 		bp.Free(padding)
 	}
 
-	n, err := s.fd.Write(dataToWrite)
+	n, err := s.fd.Write(data)
 	if err != nil {
 		return err
 	}
 
 	s.currentBlock.flushed += n
-
 	if s.currentBlock.flushed == blockSize {
 		s.currentBlock.id++
 		s.currentBlock.flushed = 0
@@ -288,6 +293,7 @@ func (s *Segment) Read(pos *Position) ([]byte, error) {
 		if chk.chunkType == kLastType || chk.chunkType == kFullType {
 			return entry, nil
 		}
+
 		currentPos.ChunkOffset += int64(chunkHeaderSize + len(chk.data))
 		if currentPos.ChunkOffset >= int64(len(blockData)) {
 			currentPos.BlockId++
@@ -313,12 +319,11 @@ func (s *Segment) readBlock(blockID int) ([]byte, error) {
 
 	s.cachedBlock.id = blockID
 	s.cachedBlock.data = s.cachedBlock.data[0:blockSize]
-	n, err := io.ReadFull(s.fd, s.cachedBlock.data)
+	_, err := io.ReadFull(s.fd, s.cachedBlock.data)
 	if err != nil && err != io.ErrUnexpectedEOF {
 		return nil, err
 	}
-
-	return s.cachedBlock.data[0:n], nil
+	return s.cachedBlock.data, nil
 }
 
 // Sync synchronizes the data to disk

@@ -2,6 +2,7 @@ package wal
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -47,9 +48,41 @@ var (
 
 // Position records the position of a chunk
 type Position struct {
-	SegmentId int   // Segment file ID
-	BlockId   int   // Block ID
-	Offset    int64 // Chunk offset
+	SegmentId int // Segment file ID
+	BlockId   int // Block ID
+	Offset    int // Chunk offset
+}
+
+// Encode converts Position to a 12-byte slice
+func (p *Position) Encode() []byte {
+	buf := make([]byte, 12)
+	binary.LittleEndian.PutUint32(buf[0:4], uint32(p.SegmentId))
+	binary.LittleEndian.PutUint32(buf[4:8], uint32(p.BlockId))
+	binary.LittleEndian.PutUint32(buf[8:12], uint32(p.Offset))
+	return buf
+}
+
+func (p *Position) EncodeString() string {
+	return hex.EncodeToString(p.Encode())
+}
+
+// Decode  converts a 12-byte slice back to Position
+func (p *Position) Decode(data []byte) error {
+	if len(data) != 12 {
+		return errors.New("invalid format")
+	}
+	p.SegmentId = int(binary.LittleEndian.Uint32(data[0:4]))
+	p.BlockId = int(binary.LittleEndian.Uint32(data[4:8]))
+	p.Offset = int(binary.LittleEndian.Uint32(data[8:12]))
+	return nil
+}
+
+func (p *Position) DecodeString(data string) error {
+	bytes, err := hex.DecodeString(data)
+	if err != nil {
+		return err
+	}
+	return p.Decode(bytes)
 }
 
 // Segment represents the Write-Ahead Log segment
@@ -159,7 +192,7 @@ func (s *Segment) writeChunk(data []byte, chunkType ChunkType) (*Position, error
 	binary.LittleEndian.PutUint32(header[:4], crc32.ChecksumIEEE(data))
 	binary.LittleEndian.PutUint16(header[4:6], uint16(len(data)))
 	header[6] = byte(chunkType)
-	offset := int64(len(s.currentBlock.data))
+	offset := len(s.currentBlock.data)
 	s.currentBlock.data = append(s.currentBlock.data, header...)
 	s.currentBlock.data = append(s.currentBlock.data, data...)
 	bp.Free(header)
@@ -257,25 +290,30 @@ func (s *Segment) splitIntoChunks(data []byte) []chunk {
 // Read reads the WAL record
 func (s *Segment) Read(pos *Position) ([]byte, error) {
 	var entry []byte
-	currentPos := &Position{
+	currPos := &Position{
 		SegmentId: pos.SegmentId,
 		BlockId:   pos.BlockId,
 		Offset:    pos.Offset,
 	}
 
 	for {
-		blockData, err := s.readBlock(currentPos.BlockId)
+		blockData, err := s.readBlock(currPos.BlockId)
 		if err != nil {
 			return nil, err
 		}
 
-		if currentPos.Offset >= int64(len(blockData)) {
-			return nil, fmt.Errorf("chk offset %d is out of range for block %d", currentPos.Offset, currentPos.BlockId)
+		if currPos.Offset >= len(blockData) {
+			return nil, fmt.Errorf("chk offset %d is out of range for block %d", currPos.Offset, currPos.BlockId)
 		}
 
-		chk, err := s.readChunk(blockData[currentPos.Offset:])
+		chk, err := s.readChunk(blockData[currPos.Offset:])
 		if err != nil {
 			return nil, err
+		}
+
+		// if chunk is empty, return eof.
+		if len(chk.data) == 0 {
+			return nil, io.EOF
 		}
 
 		if len(entry) == 0 {
@@ -290,10 +328,10 @@ func (s *Segment) Read(pos *Position) ([]byte, error) {
 		if chk.chunkType == kLastType || chk.chunkType == kFullType {
 			return entry, nil
 		}
-		currentPos.Offset += int64(chunkHeaderSize + len(chk.data))
-		if currentPos.Offset >= int64(len(blockData)) {
-			currentPos.BlockId++
-			currentPos.Offset = 0
+		currPos.Offset += chunkHeaderSize + len(chk.data)
+		if currPos.Offset >= len(blockData) {
+			currPos.BlockId++
+			currPos.Offset = 0
 		}
 	}
 }

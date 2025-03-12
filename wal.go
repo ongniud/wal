@@ -171,3 +171,21 @@ func (w *WAL) periodicSync() {
 		}
 	}
 }
+
+// NewReader creates a new Reader starting at the given position
+func (w *WAL) NewReader(pos *Position) (*Reader, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	seg, ok := w.segments[pos.SegmentId]
+	if !ok {
+		return nil, fmt.Errorf("segment %d not found", pos.SegmentId)
+	}
+
+	return &Reader{
+		wal:     w,
+		pos:     pos,
+		current: seg,
+		closed:  false,
+	}, nil
+}

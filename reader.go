@@ -26,6 +26,11 @@ func (r *Reader) Next() ([]byte, error) {
 	for {
 		entry, err := r.current.Read(r.pos)
 		if err != nil {
+			if err == ErrEndOfBlock {
+				r.pos.BlockId++
+				r.pos.Offset = 0
+				continue // Continue to read from the next segment
+			}
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				// Current segment is exhausted, move to the next segment
 				nextSegmentId := r.pos.SegmentId + 1
@@ -48,13 +53,11 @@ func (r *Reader) Next() ([]byte, error) {
 
 		// Update the position
 		r.pos.Offset += chunkHeaderSize + len(entry)
-
 		// If the current block is exhausted, move to the next block
 		if r.pos.Offset >= blockSize {
 			r.pos.BlockId++
 			r.pos.Offset = 0
 		}
-
 		return entry, nil
 	}
 }

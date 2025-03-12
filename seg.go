@@ -44,6 +44,11 @@ const (
 var (
 	ErrClosed     = errors.New("the segment file is closed")
 	ErrInvalidCRC = errors.New("invalid crc, the data may be corrupted")
+	ErrEndOfBlock = errors.New("reach the end of block")
+)
+
+var (
+	paddingBlock = make([]byte, blockSize)
 )
 
 // Segment represents the Write-Ahead Log segment
@@ -95,8 +100,9 @@ func NewSegment(id int, path string) (*Segment, error) {
 		fd: fd,
 		id: id,
 		currentBlock: &block{
-			id:   blockCount,
-			data: blockData,
+			id:      blockCount,
+			data:    blockData,
+			flushed: len(blockData),
 		},
 		cachedBlock: &block{
 			id:   -1,
@@ -170,13 +176,10 @@ func (s *Segment) flushBlock(padding bool) error {
 	if len(data) == 0 && !padding {
 		return nil
 	}
-
 	if padding && len(s.currentBlock.data) < blockSize {
 		paddingSize := blockSize - len(s.currentBlock.data)
-		padding := bp.Alloc(paddingSize)[0:paddingSize]
-		s.currentBlock.data = append(s.currentBlock.data, padding...)
+		s.currentBlock.data = append(s.currentBlock.data, paddingBlock[0:paddingSize]...)
 		data = s.currentBlock.data[s.currentBlock.flushed:]
-		bp.Free(padding)
 	}
 
 	n, err := s.fd.Write(data)
@@ -262,21 +265,17 @@ func (s *Segment) Read(pos *Position) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-
 		if currPos.Offset >= len(blockData) {
-			return nil, fmt.Errorf("chk offset %d is out of range for block %d", currPos.Offset, currPos.BlockId)
+			return nil, ErrEndOfBlock
 		}
-
 		chk, err := s.readChunk(blockData[currPos.Offset:])
 		if err != nil {
 			return nil, err
 		}
-
 		// if chunk is empty, return eof.
 		if len(chk.data) == 0 {
 			return nil, io.EOF
 		}
-
 		if len(entry) == 0 {
 			if chk.chunkType != kFullType && chk.chunkType != kFirstType {
 				return nil, fmt.Errorf("invalid first chk type: %v", chk.chunkType)
@@ -338,13 +337,13 @@ func (s *Segment) Sync() error {
 // readChunk parses the chunk
 func (s *Segment) readChunk(data []byte) (chunk, error) {
 	if len(data) < chunkHeaderSize {
-		return chunk{}, io.ErrUnexpectedEOF
+		return chunk{}, ErrEndOfBlock
 	}
 	expectedCRC := binary.LittleEndian.Uint32(data[:4])
 	length := binary.LittleEndian.Uint16(data[4:6])
 	chunkType := ChunkType(data[6])
 	if int(length)+chunkHeaderSize > len(data) {
-		return chunk{}, io.ErrUnexpectedEOF
+		return chunk{}, ErrEndOfBlock
 	}
 	chunkData := data[chunkHeaderSize : chunkHeaderSize+int(length)]
 	actualCRC := crc32.ChecksumIEEE(chunkData)

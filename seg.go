@@ -46,45 +46,6 @@ var (
 	ErrInvalidCRC = errors.New("invalid crc, the data may be corrupted")
 )
 
-// Position records the position of a chunk
-type Position struct {
-	SegmentId int // Segment file ID
-	BlockId   int // Block ID
-	Offset    int // Chunk offset
-}
-
-// Encode converts Position to a 12-byte slice
-func (p *Position) Encode() []byte {
-	buf := make([]byte, 12)
-	binary.LittleEndian.PutUint32(buf[0:4], uint32(p.SegmentId))
-	binary.LittleEndian.PutUint32(buf[4:8], uint32(p.BlockId))
-	binary.LittleEndian.PutUint32(buf[8:12], uint32(p.Offset))
-	return buf
-}
-
-func (p *Position) EncodeString() string {
-	return hex.EncodeToString(p.Encode())
-}
-
-// Decode  converts a 12-byte slice back to Position
-func (p *Position) Decode(data []byte) error {
-	if len(data) != 12 {
-		return errors.New("invalid format")
-	}
-	p.SegmentId = int(binary.LittleEndian.Uint32(data[0:4]))
-	p.BlockId = int(binary.LittleEndian.Uint32(data[4:8]))
-	p.Offset = int(binary.LittleEndian.Uint32(data[8:12]))
-	return nil
-}
-
-func (p *Position) DecodeString(data string) error {
-	bytes, err := hex.DecodeString(data)
-	if err != nil {
-		return err
-	}
-	return p.Decode(bytes)
-}
-
 // Segment represents the Write-Ahead Log segment
 type Segment struct {
 	id           int
@@ -412,4 +373,43 @@ func (s *Segment) Close() error {
 		return err
 	}
 	return nil
+}
+
+// Position records the position of a chunk
+type Position struct {
+	SegmentId int // Segment file ID
+	BlockId   int // Block ID
+	Offset    int // Chunk offset
+}
+
+// Encode converts Position to a 12-byte slice
+func (p *Position) Encode() []byte {
+	buf := make([]byte, 12)
+	binary.LittleEndian.PutUint32(buf[0:4], uint32(p.SegmentId))
+	binary.LittleEndian.PutUint32(buf[4:8], uint32(p.BlockId))
+	binary.LittleEndian.PutUint32(buf[8:12], uint32(p.Offset))
+	return buf
+}
+
+func (p *Position) EncodeString() string {
+	return hex.EncodeToString(p.Encode())
+}
+
+// Decode  converts a 12-byte slice back to Position
+func (p *Position) Decode(data []byte) error {
+	if len(data) != 12 {
+		return errors.New("invalid format")
+	}
+	p.SegmentId = int(binary.LittleEndian.Uint32(data[0:4]))
+	p.BlockId = int(binary.LittleEndian.Uint32(data[4:8]))
+	p.Offset = int(binary.LittleEndian.Uint32(data[8:12]))
+	return nil
+}
+
+func (p *Position) DecodeString(data string) error {
+	bytes, err := hex.DecodeString(data)
+	if err != nil {
+		return err
+	}
+	return p.Decode(bytes)
 }

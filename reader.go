@@ -53,11 +53,6 @@ func (r *Reader) Next() ([]byte, error) {
 
 		// Update the position
 		r.pos.Offset += chunkHeaderSize + len(entry)
-		// If the current block is exhausted, move to the next block
-		if r.pos.Offset >= blockSize {
-			r.pos.BlockId++
-			r.pos.Offset = 0
-		}
 		return entry, nil
 	}
 }
